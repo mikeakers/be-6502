@@ -15,6 +15,7 @@ reset:
   jsr init_via
   jsr init_lcd
 
+  ; Print our message
   ldx #0
 print_loop:
   lda message,x
@@ -30,10 +31,10 @@ message: .asciiz "  Hello, 4-bit                            mode! :D"
 
 init_via:
   pha
+  lda #%11111111  ; set all pins on port A to output
+  sta DDRA
   lda #%11111111  ; set all pins on port B to output
   sta DDRB
-  lda #%11100000  ; set top 3 pins on port A to output
-  sta DDRA
   pla
   rts
 
@@ -41,12 +42,13 @@ init_lcd:
   pha
 
   lda #%00000010  ; set 4 bit operation
+  ; This is the only instruction we send to the LCD in 8-bit mode, so we just raw dog it instead of
+  ; calling send_instruction
   sta PORTB
   ora #E
   sta PORTB
   and #%00001111
   sta PORTB
-
 
   lda #%00101000  ; 4 bit operation, 2 line display
   jsr send_instruction
@@ -64,12 +66,15 @@ send_instruction:
   jsr lcd_wait
   pha
   pha             ; stash away full instruction for later
-  lsr             ; move high nibble to low half
+
+  ; move high nibble to low half
+  lsr
   lsr
   lsr
   lsr
 
-  sta PORTB       ; toggle E to clock in high nibble
+  ; toggle E to clock in high nibble
+  sta PORTB
   ora #E
   sta PORTB
   and #%00001111
@@ -78,7 +83,8 @@ send_instruction:
   pla             ; pop back full instruction
   and #%00001111  ; mask out high nibble (may not be strictly neccessary)
 
-  sta PORTB       ; toggle E to clock in low nibble
+  ; toggle E to clock in low nibble
+  sta PORTB
   ora #E
   sta PORTB
   and #%00001111
@@ -92,11 +98,13 @@ send_char:
   pha
   pha             ; hold onto an extra copy of char to print
 
-  lsr             ; Move high nibble to low half
+  ; Move high nibble to low half
+  lsr
   lsr
   lsr
   lsr
 
+  ; Send high nibble to LCD
   ora #RS
   sta PORTB
   ora #E
@@ -105,9 +113,10 @@ send_char:
   ora #RS
   sta PORTB
 
-  pla
-  and #%00001111
+  pla             ; Restore full char
+  and #%00001111  ; mask out low nibble
 
+  ; Send high nibble to LCD
   ora #RS
   sta PORTB
   ora #E
@@ -124,26 +133,32 @@ lcd_wait:
   lda #%11110000  ; High nibble of PORTB to output, low nibble to input
   sta DDRB        ; Set DDRB
 lcdbusy:
+  ; Read high nibble
   lda #RW
   sta PORTB
   lda #(RW | E)
   sta PORTB
-  lda PORTB       ; Read high nibble
+  lda PORTB
+
   pha             ; High nibble contains our busy flag, so stash it in the stack
+
+  ; read low nibble
   lda #RW
   sta PORTB
   lda #(RW | E)
   sta PORTB
-  lda PORTB       ; read low nibble
+  lda PORTB
 
-  pla
-  and #%00001000
-  bne lcdbusy
+  pla             ; Bring back high nibble
+  and #%00001000  ; Check busy flag
+  bne lcdbusy     ; Repeat check if stil busy
 
+  ; Clean up, restore port b to all outputs
   lda #RW
   sta PORTB
   lda #%11111111  ; Port b to output
   sta DDRB
+
   pla
   rts
   
