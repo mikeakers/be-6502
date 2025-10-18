@@ -3,15 +3,16 @@ PORTA = $6001
 DDRB =  $6002
 DDRA =  $6003
 
-E =   %10000000
-RW =  %01000000
-RS =  %00100000
+E  = %01000000
+RW = %00100000
+RS = %00010000
 
   .org $8000
 
 reset:
   ldx #$ff         ; Set stack pointer to top of the stack range 
   tsx
+  jsr init_via
   jsr init_lcd
 
   ldx #0
@@ -27,96 +28,120 @@ halt:
 
 message: .asciiz "  Hello, 4-bit                            mode! :D" 
 
-init_lcd:
+init_via:
   pha
   lda #%11111111  ; set all pins on port B to output
   sta DDRB
   lda #%11100000  ; set top 3 pins on port A to output
   sta DDRA
-
-  lda #%00100000  ; set 4 bit operation
-  jsr send_instruction
-
-  lda #%00101000  ; 4 bit operation, 2 line display
-  jsr send_instruction4
-
-  lda #%00001110  ; turn on display and cursor
-  jsr send_instruction4
-
-  lda #%00000110  ; set mode to increment and shift cursor
-  jsr send_instruction4
-
   pla
   rts
 
-send_instruction4:
+init_lcd:
   pha
+
+  lda #%00000010  ; set 4 bit operation
+  sta PORTB
+  ora #E
+  sta PORTB
+  and #%00001111
+  sta PORTB
+
+
+  lda #%00101000  ; 4 bit operation, 2 line display
   jsr send_instruction
-  rol
-  rol
-  rol
-  rol
+
+  lda #%00001110  ; turn on display and cursor
   jsr send_instruction
+
+  lda #%00000110  ; set mode to increment and shift cursor
+  jsr send_instruction
+
   pla
   rts
 
 send_instruction:
-  pha
   jsr lcd_wait
+  pha
+  pha             ; stash away full instruction for later
+  lsr             ; move high nibble to low half
+  lsr
+  lsr
+  lsr
+
+  sta PORTB       ; toggle E to clock in high nibble
+  ora #E
   sta PORTB
-  lda #0          ; bits for setting control lines to set display type
-  sta PORTA
-  lda #E          ; send instruction
-  sta PORTA
-  lda #0          ; clear control bits
-  sta PORTA
+  and #%00001111
+  sta PORTB
+
+  pla             ; pop back full instruction
+  and #%00001111  ; mask out high nibble (may not be strictly neccessary)
+
+  sta PORTB       ; toggle E to clock in low nibble
+  ora #E
+  sta PORTB
+  and #%00001111
+  sta PORTB
+
   pla
   rts
 
 send_char:
-  pha             ; push char to print onto stack
   jsr lcd_wait
-  sta PORTB
-  lda #RS          ; clear control bits
-  sta PORTA
-  lda #(RS | E)   ; send char
-  sta PORTA
-  lda #RS          ; clear control bits
-  sta PORTA
+  pha
+  pha             ; hold onto an extra copy of char to print
 
-  pla             ; pop char to print from stack
-  pha             ; push char back to stack so it can be restored before rts
-  rol             ; shift left 4 bits
-  rol
-  rol
-  rol
+  lsr             ; Move high nibble to low half
+  lsr
+  lsr
+  lsr
 
-  jsr lcd_wait
+  ora #RS
   sta PORTB
-  lda #RS          ; clear control bits
-  sta PORTA
-  lda #(RS | E)   ; send char
-  sta PORTA
-  lda #RS          ; clear control bits
-  sta PORTA
+  ora #E
+  sta PORTB
+  and #%00001111
+  ora #RS
+  sta PORTB
+
+  pla
+  and #%00001111
+
+  ora #RS
+  sta PORTB
+  ora #E
+  sta PORTB
+  and #%00001111
+  ora #RS
+  sta PORTB
+
   pla
   rts
 
 lcd_wait:
   pha
-  lda #%00000000  ; Port B to input
-  sta DDRB
+  lda #%11110000  ; High nibble of PORTB to output, low nibble to input
+  sta DDRB        ; Set DDRB
 lcdbusy:
   lda #RW
-  sta PORTA
+  sta PORTB
   lda #(RW | E)
-  sta PORTA
-  lda PORTB
-  and #%10000000
+  sta PORTB
+  lda PORTB       ; Read high nibble
+  pha             ; High nibble contains our busy flag, so stash it in the stack
+  lda #RW
+  sta PORTB
+  lda #(RW | E)
+  sta PORTB
+  lda PORTB       ; read low nibble
+
+  pla
+  and #%00001000
   bne lcdbusy
 
   lda #RW
-  sta PORTA
+  sta PORTB
   lda #%11111111  ; Port b to output
   sta DDRB
   pla
