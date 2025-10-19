@@ -1,13 +1,13 @@
-PORTB = $6000
-PORTA = $6001
-DDRB =  $6002
-DDRA =  $6003
+PORTB = $0150
+PORTA = $0160
+DDRB =  $0170
+DDRA =  $0180
 
 E =   %10000000
 RW =  %01000000
 RS =  %00100000
 
-  .org $8000
+;  .org $8000
 
 reset:
   lda #%11111111  ; set all pins on port B to output
