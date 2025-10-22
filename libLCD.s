@@ -88,6 +88,13 @@ print_char:
   pla
   rts
 
+clear_display:
+  pha
+  lda #%00000010  ; Clear display
+  jsr send_instruction
+  pla
+  rts
+
 lcd_wait:
   pha
   lda #%11110000  ; High nibble of PORTB to output, low nibble to input
